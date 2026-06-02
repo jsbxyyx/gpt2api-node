@@ -6,9 +6,10 @@
  *   DB_APIKEY - Supabase anon/service_role key
  *   API_KEY   - （可选）访问此代理所需的 ******
  *
- * 数据库表结构（Supabase / PostgreSQL）:
- *   tokens (
- *     id              serial primary key,
+ * 建表语句（在 Supabase SQL 编辑器中执行）:
+ *
+ *   CREATE TABLE gpt_tokens (
+ *     id              serial          PRIMARY KEY,
  *     email           text,
  *     account_id      text,
  *     access_token    text,
@@ -16,14 +17,15 @@
  *     id_token        text,
  *     expired_at      timestamptz,
  *     last_refresh_at timestamptz,
- *     is_active       boolean default true,
- *     type            text default 'codex'
- *   )
- *   api_keys (
- *     id       serial primary key,
- *     key      text unique,
- *     is_active boolean default true
- *   )
+ *     is_active       boolean         NOT NULL DEFAULT true,
+ *     type            text            NOT NULL DEFAULT 'codex'
+ *   );
+ *
+ *   CREATE TABLE gpt_api_keys (
+ *     id        serial  PRIMARY KEY,
+ *     key       text    NOT NULL UNIQUE,
+ *     is_active boolean NOT NULL DEFAULT true
+ *   );
  *
  * 部署方式（不使用 wrangler）:
  *   直接将本文件内容粘贴到 Cloudflare Workers 编辑器即可。
@@ -116,7 +118,7 @@ let _roundRobinIndex = 0;
  * 从数据库取一个活跃 token（轮询）
  */
 async function getActiveToken(db_url, apikey) {
-  const tokens = await db_select(db_url, apikey, 'tokens', {
+  const tokens = await db_select(db_url, apikey, 'gpt_tokens', {
     is_active: 'eq.true',
     select: 'id,email,account_id,access_token,refresh_token,id_token,expired_at,last_refresh_at,type',
   });
@@ -177,7 +179,7 @@ async function refreshToken(db_url, apikey, token) {
   };
 
   // 写回数据库（不阻塞主流程，但我们这里等待确保一致性）
-  await db_update(db_url, apikey, 'tokens', {
+  await db_update(db_url, apikey, 'gpt_tokens', {
     access_token: updated.access_token,
     refresh_token: updated.refresh_token,
     id_token: updated.id_token,
@@ -419,7 +421,7 @@ async function authenticate(request, env) {
 
   // 也可以从数据库 api_keys 表校验
   if (env.DB_URL && env.DB_APIKEY) {
-    const rows = await db_select(env.DB_URL, env.DB_APIKEY, 'api_keys', {
+    const rows = await db_select(env.DB_URL, env.DB_APIKEY, 'gpt_api_keys', {
       key: 'eq.' + token,
       is_active: 'eq.true',
     });
